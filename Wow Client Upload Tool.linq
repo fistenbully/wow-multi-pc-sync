@@ -7,32 +7,70 @@
   <Namespace>System.Threading.Tasks</Namespace>
 </Query>
 
-string  containerName = "wowshare";
+string containerName = "wowshare";
 string connectionString = "";
-	string accountName = "";
-	
+string accountName = "";
+string wowFolderPath = @"C:\Program Files (x86)\World of Warcraft\_retail_";
+
 async Task Main()
 {
-	var wowFolderPath = @"F:\World of Warcraft\_retail_";
-	var interfaceFolder = "Interface";
-	var wtf = "WTF";
+	var addons = Path.Combine(wowFolderPath, @"Interface\AddOns");
+	var wtf = Path.Combine(wowFolderPath, @"WTF");
 
-	var output = @"D:\temp";
+	var lastChangedDate = DateTime.Now;
 
-	var machineName = Environment.MachineName;
+	var fswAddon = new FileSystemWatcher(addons);
+	ManualResetEvent workToDo = new ManualResetEvent(false);
+	fswAddon.NotifyFilter = NotifyFilters.LastWrite;
+	fswAddon.Changed += (source, e) => { workToDo.Set(); };
+	fswAddon.Created += (source, e) => { workToDo.Set(); };
+	fswAddon.IncludeSubdirectories = true;
+	fswAddon.EnableRaisingEvents = true;
 
-	var files = new List<string>{
-		Zip(wowFolderPath, output, interfaceFolder),
-		Zip(wowFolderPath, output, wtf)
-	};
-	
-	await UploadFilesToClod(files,accountName, machineName);
+	var fswWtf = new FileSystemWatcher(wtf);
+	fswWtf.NotifyFilter = NotifyFilters.LastWrite;
+	fswWtf.Changed += (source, e) => { workToDo.Set(); };
+	fswWtf.Created += (source, e) => { workToDo.Set(); };
+	fswWtf.IncludeSubdirectories = true;
+	fswWtf.EnableRaisingEvents = true;
+
+	var timer = new System.Timers.Timer(5000);
+	timer.Elapsed += async (source, e) =>
+	 {
+	 	"triggered".Dump();
+		 var output = @"c:\temp";
+
+		 var machineName = Environment.MachineName;
+
+		 var files = new List<string>{
+		Zip(addons, output),
+		Zip(wtf, output )
+		 };
+		 
+		 timer.Stop();
+		 //	await UploadFilesToClod(files, accountName, machineName);
+	 };
+
+	while (true)
+	{
+		if (workToDo.WaitOne())
+		{
+			workToDo.Reset();
+
+			if (timer.Enabled)
+			{
+				timer.Stop();
+			}
+
+			timer.Start();
+
+		}
+
+	}
 }
 
 private async Task UploadFilesToClod(List<string> files, string accountName, string machineName)
 {
-
-	
 	var cloudAccount = CloudStorageAccount.Parse(connectionString);
 
 	var client = cloudAccount.CreateCloudBlobClient();
@@ -46,9 +84,10 @@ private async Task UploadFilesToClod(List<string> files, string accountName, str
 	}
 }
 
-private string Zip(string wowFolder, string output, string kind)
+private string Zip(string path, string output)
 {
-	var inputFolder = Path.Combine(wowFolder, kind);
+	var inputFolder = path;
+	var kind = Path.GetFileName(path);
 	var outputFile = Path.Combine(output, $"{kind}.zip");
 
 	if (File.Exists(outputFile))
